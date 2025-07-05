@@ -1,0 +1,40 @@
+<!-- index.html : Interfaz web para enviar mensajes de WhatsApp -->
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Enviar WhatsApp</title>
+    <!-- Cargar Bootstrap 5 CSS desde CDN -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+</head>
+
+<body class="bg-light">
+    <div class="container py-5">
+        <h1 class="mb-4">Enviar mensaje de WhatsApp</h1>
+        <form action="/send" method="POST" class="card p-4 shadow-sm">
+            <!-- Campo Número de teléfono -->
+            <div class="mb-3">
+                <label for="number" class="form-label">Número (con código de país)</label>
+                <input type="tel" class="form-control" id="number" name="number" placeholder="+5491112345678" required>
+                <div class="form-text">Incluye el código de país. Ej: +54 911 12345678</div>
+            </div>
+            <!-- Campo Mensaje de texto -->
+            <div class="mb-3">
+                <label for="message" class="form-label">Mensaje</label>
+                <textarea class="form-control" id="message" name="message" rows="3" placeholder="Escribe el mensaje..."
+                    required></textarea>
+            </div>
+            <!-- Campo Fecha y hora de envío -->
+            <div class="mb-3">
+                <label for="datetime" class="form-label">Programar hora de envío (opcional)</label>
+                <input type="datetime-local" class="form-control" id="datetime" name="datetime">
+                <div class="form-text">Deja vacío para enviar inmediatamente.</div>
+            </div>
+            <!-- Botón Enviar -->
+            <button type="submit" class="btn btn-primary">Enviar WhatsApp</button>
+        </form>
+    </div>
+</body>
+
+</html>
