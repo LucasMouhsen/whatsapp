@@ -20,6 +20,7 @@ function createOAuthClient() {
     const credentials = JSON.parse(fs.readFileSync(CREDENTIALS_PATH, 'utf-8'));
     const { client_secret, client_id } = credentials.installed;
     return new google.auth.OAuth2(client_id, client_secret, REDIRECT_URI);
+
 }
 
 const client = new Client({
