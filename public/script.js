@@ -15,6 +15,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Cargar contactos
     try {
         const res = await fetch('/contactos');
+        if (res.status === 401) {
+            window.location.href = '/auth/google';
+            return;
+        }
         const contactos = await res.json();
 
         // Ordenar alfabéticamente por nombre

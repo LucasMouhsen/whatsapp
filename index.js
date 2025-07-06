@@ -4,12 +4,22 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const express = require('express');
 const bodyParser = require('body-parser');
+const session = require('express-session');
 const fs = require('fs');
 const path = require('path');
+const { google } = require('googleapis');
 
 const app = express();
 const PORT = 3000;
 const DB_FILE = path.join(__dirname, 'mensajesProgramados.json');
+const CREDENTIALS_PATH = path.join(__dirname, 'credentials.json');
+const SCOPES = ['https://www.googleapis.com/auth/contacts.readonly'];
+
+function createOAuthClient() {
+    const credentials = JSON.parse(fs.readFileSync(CREDENTIALS_PATH, 'utf-8'));
+    const { client_secret, client_id, redirect_uris } = credentials.installed;
+    return new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
+}
 
 const client = new Client({
     authStrategy: new LocalAuth()
@@ -27,8 +37,12 @@ client.on('ready', () => {
 client.initialize();
 
 app.use(bodyParser.urlencoded({ extended: true }));
+app.use(session({
+    secret: 'whatsapp-session-secret',
+    resave: false,
+    saveUninitialized: false
+}));
 app.use(express.static(path.join(__dirname, 'public')));
-app.use('/contactos', express.static(path.join(__dirname, 'contactos.json')));
 
 // Leer base de datos si existe, o crear si no
 let mensajesProgramados = [];
@@ -231,13 +245,57 @@ app.get('/programados', (req, res) => {
     res.send(html);
 });
 
-app.get('/contactos', (req, res) => {
-    const contactosPath = path.join(__dirname, 'contactos.json');
-    if (fs.existsSync(contactosPath)) {
-        const data = fs.readFileSync(contactosPath, 'utf-8');
-        res.json(JSON.parse(data));
-    } else {
-        res.json([]);
+app.get('/auth/google', (req, res) => {
+    const oAuth2Client = createOAuthClient();
+    const authUrl = oAuth2Client.generateAuthUrl({
+        access_type: 'offline',
+        scope: SCOPES,
+        prompt: 'consent'
+    });
+    res.redirect(authUrl);
+});
+
+app.get('/auth/google/callback', async (req, res) => {
+    const code = req.query.code;
+    const oAuth2Client = createOAuthClient();
+    try {
+        const { tokens } = await oAuth2Client.getToken(code);
+        req.session.tokens = tokens;
+        res.redirect('/');
+    } catch (err) {
+        console.error('❌ Error retrieving access token', err);
+        res.status(500).send('Error al autenticar con Google');
+    }
+});
+
+app.get('/contactos', async (req, res) => {
+    if (!req.session.tokens) {
+        return res.sendStatus(401);
+    }
+
+    const oAuth2Client = createOAuthClient();
+    oAuth2Client.setCredentials(req.session.tokens);
+
+    try {
+        const service = google.people({ version: 'v1', auth: oAuth2Client });
+        const response = await service.people.connections.list({
+            resourceName: 'people/me',
+            pageSize: 1000,
+            personFields: 'names,phoneNumbers'
+        });
+
+        const connections = response.data.connections || [];
+        const contactos = connections
+            .filter(p => p.names && p.phoneNumbers)
+            .map(p => ({
+                nombre: p.names[0].displayName,
+                numero: p.phoneNumbers[0].value.replace(/\D/g, '')
+            }));
+
+        res.json(contactos);
+    } catch (err) {
+        console.error('❌ Error al obtener contactos:', err);
+        res.status(500).send('Error al obtener contactos');
     }
 });
 
