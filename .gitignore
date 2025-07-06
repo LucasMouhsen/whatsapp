@@ -2,7 +2,5 @@
 /.wwebjs_cache
 /node_modules
 package-lock.json
-contactos.json
 credentials.json
 mensajesProgramados.json
-token.json
