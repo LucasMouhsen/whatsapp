@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Enviar WhatsApp</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intl-tel-input@18.1.1/build/css/intlTelInput.css" />
+</head>
+
+<body class="bg-dark text-white">
+    <div class="container py-4">
+        <h1 class="text-center mb-4">📤 Programar mensaje de WhatsApp</h1>
+
+        <form action="/send" method="POST" class="card p-4 bg-secondary">
+
+            <!-- Selector de contacto -->
+            <label for="contacto" class="form-label">Elegir contacto (opcional)</label>
+            <div class="mb-3">
+                <select id="contacto" class="form-select">
+                    <option value="">-- Seleccionar contacto --</option>
+                </select>
+            </div>
+
+            <!-- Número con intl-tel-input -->
+            <label for="number" class="form-label">Número de teléfono</label>
+            <div class="mb-3">
+                <input type="tel" class="form-control" id="number" name="number" required />
+            </div>
+
+            <!-- Mensaje -->
+            <label for="message" class="form-label">Mensaje</label>
+            <div class="mb-3">
+                <textarea class="form-control" id="message" name="message" rows="4" required></textarea>
+            </div>
+
+            <!-- Fecha y hora -->
+            <label for="datetime" class="form-label">Programar hora de envío (opcional)</label>
+            <div class="mb-3">
+                <input type="datetime-local" class="form-control" id="datetime" name="datetime" />
+            </div>
+
+            <!-- ALERTA -->
+            <div id="alerta" class="alert d-none" role="alert"></div>
+
+            <button type="submit" class="btn btn-primary w-100">Enviar WhatsApp</button>
+
+        </form>
+
+        <div class="text-center mt-3">
+            <a href="/programados" class="btn btn-outline-light w-100">
+                📅 Ver mensajes programados
+            </a>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/intl-tel-input@18.1.1/build/js/intlTelInput.min.js"></script>
+    <script src="script.js"></script>
+</body>
+
+</html>

@@ -1,84 +1,246 @@
-// --- index.js ---
-// Importar módulos necesarios
+// index.js con persistencia de mensajes programados
+
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const express = require('express');
-const bodyParser = require('body-parser'); // Para parsear datos POST (opcional)
+const bodyParser = require('body-parser');
+const fs = require('fs');
+const path = require('path');
 
-// Crear instancia del cliente de WhatsApp con autenticación local (guarda sesión)
+const app = express();
+const PORT = 3000;
+const DB_FILE = path.join(__dirname, 'mensajesProgramados.json');
+
 const client = new Client({
-    authStrategy: new LocalAuth()  // Guarda la sesión para no escanear QR cada vez :contentReference[oaicite:0]{index=0}
+    authStrategy: new LocalAuth()
 });
 
-// Mostrar QR en consola para vincular WhatsApp
 client.on('qr', qr => {
-    // Generar y mostrar el QR code en la terminal (texto)
-    qrcode.generate(qr, { small: true });  // Escanea este código con tu teléfono :contentReference[oaicite:1]{index=1}
-    console.log('Escanea el código QR above con WhatsApp para autenticación.');
+    qrcode.generate(qr, { small: true });
+    console.log('📱 Escaneá el código QR');
 });
 
-// Confirmar cuando el cliente esté listo
 client.on('ready', () => {
-    console.log('✅ Cliente de WhatsApp listo (conectado).');
+    console.log('✅ Cliente de WhatsApp listo');
 });
 
-// Iniciar el cliente (esto abre una instancia de WhatsApp Web en segundo plano)
 client.initialize();
 
-// Configurar servidor web Express
-const app = express();
-app.use(bodyParser.urlencoded({ extended: true }));  // parsear formulario (application/x-www-form-urlencoded)
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(express.static(path.join(__dirname, 'public')));
+app.use('/contactos', express.static(path.join(__dirname, 'contactos.json')));
 
-// Servir la página HTML principal
+// Leer base de datos si existe, o crear si no
+let mensajesProgramados = [];
+if (fs.existsSync(DB_FILE)) {
+    const data = fs.readFileSync(DB_FILE, 'utf-8');
+    try {
+        mensajesProgramados = JSON.parse(data);
+    } catch (err) {
+        console.error('❌ Error al parsear mensajesProgramados.json:', err);
+    }
+} else {
+    fs.writeFileSync(DB_FILE, '[]');
+    console.log('🆕 Archivo mensajesProgramados.json creado.');
+}
+
+// Guardar en archivo
+function guardarMensajes() {
+    try {
+        fs.writeFileSync(DB_FILE, JSON.stringify(mensajesProgramados, null, 2));
+        console.log('📝 mensajesProgramados.json guardado con éxito');
+    } catch (err) {
+        console.error('❌ Error al guardar el archivo JSON:', err);
+    }
+}
+
+// Reprogramar mensajes pendientes al iniciar
+function reprogramarMensajesPendientes() {
+    const ahora = new Date();
+
+    for (const registro of mensajesProgramados) {
+        const hora = new Date(registro.datetime);
+
+        if (hora > ahora && registro.estado === 'Programado') {
+            const delay = hora - ahora;
+
+            console.log(`⏳ Reprogramando mensaje para ${registro.numero} a las ${hora.toLocaleString()}`);
+
+            setTimeout(async () => {
+                try {
+                    await client.sendMessage(registro.numero, registro.mensaje);
+                    registro.estado = 'Enviado';
+                    console.log(`✅ Mensaje reenviado a ${registro.numero}`);
+                } catch (err) {
+                    registro.estado = 'Error';
+                    console.error(`❌ Error al reenviar mensaje a ${registro.numero}:`, err);
+                }
+
+                guardarMensajes();
+            }, delay);
+        }
+    }
+}
+
+reprogramarMensajesPendientes();
+
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/index.html');
 });
 
-// Ruta para procesar el envío de mensaje (desde el formulario)
-app.post('/send', (req, res) => {
-    const numero = req.body.number;      // Número de destino (puede incluir +)
-    const mensaje = req.body.message;    // Texto del mensaje
-    const horaEnvio = req.body.datetime; // Hora programada (formato ISO de input datetime-local)
+app.post('/send', async (req, res) => {
+    let number = (req.body.number || '').replace(/\D/g, '');
+    const message = req.body.message || '';
+    const datetime = req.body.datetime;
 
-    // Formatear chatId requerido por whatsapp-web.js
-    // Eliminar '+' al inicio (si existe) y agregar sufijo "@c.us"
-    const chatId = numero.replace(/\D/g, '');  // quitar cualquier caracter no dígito (ej. '+')
-    const destinatario = chatId + '@c.us';     // formatear como ID de chat de WhatsApp:contentReference[oaicite:2]{index=2}
+    // ✅ Agregar el 9 si es Argentina y no empieza con 549
+    if (number.startsWith('54') && !number.startsWith('549')) {
+        number = '549' + number.slice(2);
+    }
 
-    // Función para enviar mensaje (verifica que cliente esté listo)
-    const enviarMensaje = () => {
-        if (mensaje && destinatario) {
-            client.sendMessage(destinatario, mensaje)
-                .then(() => console.log(`Mensaje enviado a ${destinatario}`))
-                .catch(err => console.error('Error enviando mensaje:', err));
+    const chatId = `${number}@c.us`;
+
+    try {
+        const isRegistered = await client.isRegisteredUser(chatId);
+        if (!isRegistered) {
+            return res.status(400).send('❌ El número no está registrado en WhatsApp.');
         }
-    };
 
-    // Programar el envío si se especificó una hora futura
-    if (horaEnvio) {
-        const hora = new Date(horaEnvio);
-        const ahora = new Date();
-        if (hora.getTime() > ahora.getTime()) {
-            const delay = hora.getTime() - ahora.getTime();
-            setTimeout(() => {
-                enviarMensaje();
-            }, delay);
-            res.send(`✅ Mensaje programado para ${hora.toLocaleString()}.`);
-            console.log(`Mensaje programado para ${hora.toLocaleString()}.`);
-        } else {
-            // Si la hora es pasada o igual al presente, enviar inmediatamente
-            enviarMensaje();
-            res.send('✅ Mensaje enviado inmediatamente (hora programada pasada o no válida).');
+        const enviarMensaje = async () => {
+            await client.sendMessage(chatId, message);
+            console.log(`✅ Mensaje enviado a ${chatId}`);
+        };
+
+        if (datetime) {
+            const hora = new Date(datetime);
+            const ahora = new Date();
+
+            if (hora > ahora) {
+                const delay = hora - ahora;
+
+                const registro = {
+                    numero: chatId,
+                    mensaje: message,
+                    datetime: hora.toISOString(),
+                    creado: new Date().toISOString(),
+                    estado: 'Programado'
+                };
+
+                mensajesProgramados.push(registro);
+                guardarMensajes();
+
+                setTimeout(async () => {
+                    try {
+                        await enviarMensaje();
+                        registro.estado = 'Enviado';
+                    } catch (err) {
+                        registro.estado = 'Error';
+                        console.error('❌ Error al enviar mensaje programado:', err);
+                    }
+                    guardarMensajes();
+                }, delay);
+
+                return res.send(`⏳ Mensaje programado para ${hora.toLocaleString()}.`);
+            }
         }
-    } else {
-        // Sin hora especificada: enviar de inmediato
-        enviarMensaje();
-        res.send('✅ Mensaje enviado inmediatamente.');
+
+        try {
+            await enviarMensaje();
+            mensajesProgramados.push({
+                numero: chatId,
+                mensaje: message,
+                datetime: new Date().toISOString(),
+                creado: new Date().toISOString(),
+                estado: 'Enviado'
+            });
+            guardarMensajes();
+            res.send('✅ Mensaje enviado inmediatamente.');
+        } catch (error) {
+            mensajesProgramados.push({
+                numero: chatId,
+                mensaje: message,
+                datetime: new Date().toISOString(),
+                creado: new Date().toISOString(),
+                estado: 'Error'
+            });
+            guardarMensajes();
+            console.error('❌ Error al enviar mensaje inmediatamente:', error);
+            res.status(500).send('❌ Ocurrió un error al enviar el mensaje.');
+        }
+    } catch (error) {
+        console.error('❌ Error general en /send:', error);
+        res.status(500).send('❌ Error interno del servidor.');
     }
 });
 
-// Iniciar servidor en puerto 3000
-const PORT = 3000;
+app.get('/programados', (req, res) => {
+    let html = `
+    <html>
+    <head>
+        <title>Mensajes Programados</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+        <style>
+            .estado-programado { color: #0d6efd; }
+            .estado-enviado { color: #198754; }
+            .estado-error { color: #dc3545; }
+        </style>
+    </head>
+    <body class="bg-light">
+        <div class="container py-4">
+            <h1 class="mb-4 text-center">📅 Mensajes Programados</h1>
+            <table class="table table-bordered table-hover">
+                <thead class="table-secondary">
+                    <tr>
+                        <th>Número</th>
+                        <th>Mensaje</th>
+                        <th>Fecha Programada</th>
+                        <th>Fecha de Creación</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+
+    if (mensajesProgramados.length === 0) {
+        html += `<tr><td colspan="5" class="text-center text-muted">No hay mensajes registrados.</td></tr>`;
+    } else {
+        for (const msg of mensajesProgramados) {
+            const estadoIcono = msg.estado === 'Enviado' ? '✅' : msg.estado === 'Error' ? '❌' : '⏳';
+            const estadoClase = msg.estado === 'Enviado' ? 'estado-enviado' : msg.estado === 'Error' ? 'estado-error' : 'estado-programado';
+
+            html += `
+                <tr>
+                    <td>${msg.numero}</td>
+                    <td>${msg.mensaje}</td>
+                    <td>${new Date(msg.datetime).toLocaleString()}</td>
+                    <td>${new Date(msg.creado).toLocaleString()}</td>
+                    <td class="${estadoClase}">${estadoIcono} ${msg.estado || 'Desconocido'}</td>
+                </tr>`;
+        }
+    }
+
+    html += `</tbody>
+            </table>
+            <div class="text-center">
+                <a href="/" class="btn btn-outline-primary">⬅ Volver al inicio</a>
+            </div>
+        </div>
+    </body>
+    </html>`;
+
+    res.send(html);
+});
+
+app.get('/contactos', (req, res) => {
+    const contactosPath = path.join(__dirname, 'contactos.json');
+    if (fs.existsSync(contactosPath)) {
+        const data = fs.readFileSync(contactosPath, 'utf-8');
+        res.json(JSON.parse(data));
+    } else {
+        res.json([]);
+    }
+});
+
 app.listen(PORT, () => {
-    console.log(`Servidor web iniciado en http://localhost:${PORT}`);
+    console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
 });
