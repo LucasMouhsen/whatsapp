@@ -14,11 +14,13 @@ const PORT = 3000;
 const DB_FILE = path.join(__dirname, 'mensajesProgramados.json');
 const CREDENTIALS_PATH = path.join(__dirname, 'credentials.json');
 const SCOPES = ['https://www.googleapis.com/auth/contacts.readonly'];
+const REDIRECT_URI = process.env.REDIRECT_URI || `http://localhost:${PORT}/auth/google/callback`;
 
 function createOAuthClient() {
     const credentials = JSON.parse(fs.readFileSync(CREDENTIALS_PATH, 'utf-8'));
-    const { client_secret, client_id, redirect_uris } = credentials.installed;
-    return new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
+    const { client_secret, client_id } = credentials.installed;
+    return new google.auth.OAuth2(client_id, client_secret, REDIRECT_URI);
+
 }
 
 const client = new Client({
